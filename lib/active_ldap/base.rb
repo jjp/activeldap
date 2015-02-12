@@ -1181,7 +1181,7 @@ module ActiveLdap
           new_name = to_real_attribute_name(new_name)
         end
         new_bases = bases.empty? ? nil : DN.new(*bases).to_s
-        dn_components = ["#{new_name}=#{new_value}",
+        dn_components = ["#{new_name}=#{DN.escape_value(new_value)}",
                          new_bases,
                          self.class.base.to_s]
         dn_components = dn_components.find_all {|component| !component.blank?}
@@ -1195,14 +1195,21 @@ module ActiveLdap
     def split_dn_value(value)
       dn_value = relative_dn_value = nil
       value = value.first if value.is_a?(Array) and value.size == 1
-      dn_value = value if value.is_a?(DN)
-      begin
-        dn_value ||= DN.parse(value)
-      rescue DistinguishedNameInvalid
+      if( value.is_a?(DN) )
+        dn_value = value
+        return_raw_value = false
+      else
         begin
-          dn_value = DN.parse("#{dn_attribute}=#{value}")
+          # if value is valid DN string "ou=Group"
+          dn_value ||= DN.parse(value)
+          return_raw_value = false
         rescue DistinguishedNameInvalid
-          return [nil, value, value, []]
+          begin
+            dn_value = DN.parse("#{dn_attribute}=#{DN.escape_value(value)}")
+            return_raw_value = true
+          rescue DistinguishedNameInvalid
+            return [nil, value, value, []]
+          end
         end
       end
 
@@ -1222,12 +1229,9 @@ module ActiveLdap
       end
 
       dn_attribute_name, dn_attribute_value = val.to_a[0]
-      escaped_dn_attribute_value = nil
-      unless dn_attribute_value.nil?
-        escaped_dn_attribute_value = DN.escape_value(dn_attribute_value)
-      end
-      [dn_attribute_name, escaped_dn_attribute_value,
-       dn_attribute_value, bases]
+
+      [dn_attribute_name, dn_attribute_value,
+       return_raw_value ? value : dn_attribute_value, bases]
     end
 
     def need_update_dn?
